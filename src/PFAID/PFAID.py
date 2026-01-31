@@ -6,22 +6,34 @@ import struct
 # --- Color Space Conversion (RGB <-> YCoCg) ---
 
 def _rgb_to_ycocg(r, g, b):
-    """Converts RGB to YCoCg-t (t-channel is the difference: R-B)."""
-    t = r - b
+    t  = r - b
     Co = g - b
-    # Y = B + (R-B)/2 + (G-B)/2, using bit-shifts for division
-    Y = b + (t >> 1) + (Co >> 1)
-    return Y, Co, t
+    Y  = b + (t >> 1) + (Co >> 1)
+
+    # Bias to unsigned
+    return (
+        Y  & 0xFF,
+        (Co + 128) & 0xFF,
+        (t  + 128) & 0xFF
+    )
 
 
 def _ycocg_to_rgb(Y, Co, t):
-    """Converts YCoCg-t back to RGB."""
-    # B = Y - Co/2 - t/2
+    # Undo bias
+    Co -= 128
+    t  -= 128
+
     B = Y - (Co >> 1) - (t >> 1)
     G = Co + B
     R = t + B
-    # Use modulo 256 to wrap around any values that exceeded 255 or went below 0
-    return R % 256, G % 256, B % 256
+
+    # Clamp, not modulo
+    return (
+        max(0, min(255, R)),
+        max(0, min(255, G)),
+        max(0, min(255, B))
+    )
+
 
 
 # --- Predictors (Predictive Coding) ---
@@ -45,7 +57,7 @@ def _locoi_med_predictor(left, above, up_left):
     else:
         # Standard MED: P = Left + Above - UpLeft
         predictor = left + above - up_left
-    return predictor % 256
+    return max(0, min(255, predictor))
 
 
 def _predict_locoi(current, left, above, up_left):
@@ -284,7 +296,6 @@ def read_image_pixels(image_path, mode=0, bytesmode=0, pred_mode=0, cs_mode=0):
                     r, g, b = img.getpixel((x, y))
                     # Format each component as a 3-digit string (e.g., 255 -> "255")
                     img_hash.append(f"{r:03d}" + f"{g:03d}" + f"{b:03d}")
-
             # Append dimensions, formatted as 9-digit strings
             img_hash.append(f"{width:09d}" + f"{height:09d}")
 
